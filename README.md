@@ -105,6 +105,9 @@ stocks_widget({ symbols = { "BTC-USD" }, refresh_closed = 60 }),
 | `price_format` | `"%.2f"` | `string.format` pattern for prices |
 | `percent_format` | `"%+.2f%%"` | `string.format` pattern for the change |
 | `separator` | `"  "` | text between tickers |
+| `text_format` | – | custom layout: `${placeholder}` template or a function — see below |
+| `color_symbol` | – | symbol colour when `text_format` is used |
+| `color_price` | – | price colour when `text_format` is used; `"change"` colours it by the move |
 | `font` | theme default | font for the textboxes |
 | `color_up` | `#8CC63F` | colour when the day's change is positive |
 | `color_down` | `#D05050` | colour when negative |
@@ -120,6 +123,66 @@ stocks_widget({ symbols = { "BTC-USD" }, refresh_closed = 60 }),
   disable with `on_click = false`.
 - **Middle click** — force an immediate refresh.
 - **Hover** — tooltip with full information for that ticker.
+
+## Custom formatting
+
+The `show_*` flags cover the common layouts. For full control set `text_format`
+to a template with `${placeholder}` fields:
+
+```lua
+stocks_widget({
+    symbols      = { "AAPL", "META" },
+    text_format  = "${symbol} ${arrow} ${price} ${change_percent}",
+}),
+```
+
+When `text_format` is set the template owns the colouring, so wrap the parts you
+want coloured in the matching `*_color_on` / `*_color_off` pairs. This keeps the
+symbol neutral and colours only the price and the change:
+
+```lua
+stocks_widget({
+    symbols      = { "AAPL", "META" },
+    color_symbol = "#FFFFFF",
+    color_price  = "change",   -- colour the price by the day's move
+    text_format  = "${symbol_color_on}${symbol}${symbol_color_off} "
+                .. "${price_color_on}${price}${price_color_off} "
+                .. "${change_color_on}${change_percent}${change_color_off}",
+}),
+```
+
+### Fields
+
+| placeholder | example |
+|---|---|
+| `${symbol}` | `AAPL` |
+| `${name}` | `Apple Inc.` |
+| `${price}` | `331.34` (via `price_format`) |
+| `${change}` | `-1.74` |
+| `${change_percent}` | `-0.52%` (via `percent_format`) |
+| `${previous_close}` | `333.08` |
+| `${currency}` | `USD` |
+| `${market_state}` | `REGULAR` |
+| `${arrow}` | `▲` / `▼`, empty when flat |
+| `${symbol_color_on}` / `${symbol_color_off}` | span tags for `color_symbol` |
+| `${price_color_on}` / `${price_color_off}` | span tags for `color_price` |
+| `${change_color_on}` / `${change_color_off}` | span tags for the up/down colour |
+
+A placeholder with no value renders empty, so a typo leaves a gap rather than
+breaking the widget.
+
+### A function instead of a template
+
+`text_format` also accepts a function, which receives the same fields and
+returns pango markup:
+
+```lua
+text_format = function(f)
+    return f.symbol .. " " .. f.price .. (f.market_state == "CLOSED" and " (closed)" or "")
+end,
+```
+
+If it raises, that ticker shows an error marker and the rest keep working.
 
 ## Polling and market hours
 
@@ -354,6 +417,14 @@ awesome-client '
   local y = require("awesomewm-stock-ticker.providers.yahoo")
   return y.request("AAPL", {}).url'
 ```
+
+## Prior art
+
+[whwright/stock-widget](https://github.com/whwright/stock-widget) is an earlier
+awesome stock ticker, and the `${placeholder}` template idea here comes from it.
+It is hardwired to Alpha Vantage, whose free tier is now 25 requests per day,
+which makes minute-resolution polling impractical — that limitation is what
+prompted the pluggable-provider design in this widget.
 
 ## Licence
 
