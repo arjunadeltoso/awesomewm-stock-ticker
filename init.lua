@@ -1,9 +1,12 @@
 --------------------------------------------------------------------------------
 -- stocks -- a pluggable stock ticker widget for awesome 4.x
 --
---   local stocks = require("stocks")
+--   local stocks = require("awesomewm-stock-ticker")
 --   ...
 --   stocks({ symbols = { "AAPL", "META" } })
+--
+-- The module resolves its own name at load time, so the directory it lives in
+-- can be called anything -- require() it by whatever name you cloned it as.
 --
 -- All configuration is passed in by the caller; nothing about your setup is
 -- baked into this module. Data sources are plugins: see providers/ and the
@@ -29,6 +32,10 @@
 --   trading = { regular = { start = epoch, stop = epoch }, pre = ..., post = ... },
 --   timestamp
 --------------------------------------------------------------------------------
+
+-- Our own module name, e.g. "awesomewm-stock-ticker". Lua passes it to the
+-- chunk as the first vararg, so nothing here depends on the directory name.
+local MODULE = ...
 
 local awful     = require("awful")
 local wibox     = require("wibox")
@@ -91,7 +98,7 @@ end
 
 local function load_provider(p)
     if type(p) == "table" then return p end          -- inline provider
-    local ok, mod = pcall(require, "stocks.providers." .. tostring(p))
+    local ok, mod = pcall(require, MODULE .. ".providers." .. tostring(p))
     if ok and type(mod) == "table" then return mod end
     return nil, ("provider '%s' not found (%s)"):format(tostring(p), tostring(mod))
 end

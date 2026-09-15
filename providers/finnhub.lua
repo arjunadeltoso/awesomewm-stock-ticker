@@ -10,7 +10,10 @@
 -- so `name` is nil and `market_state` is UNKNOWN. The widget copes with both.
 --------------------------------------------------------------------------------
 
-local json = require("stocks.json")
+-- Derive the package root from our own module name so the widget works
+-- regardless of what the containing directory is called.
+local ROOT = (...):match("^(.-)%.providers%.") or "awesomewm-stock-ticker"
+local json = require(ROOT .. ".json")
 
 local P = { name = "finnhub", needs_key = true,
               quote_url = "https://finnhub.io/quote/%s" }
