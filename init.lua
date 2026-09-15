@@ -99,14 +99,32 @@ local function shquote(s)
     return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
 end
 
+-- curl exits 0 for 4xx/5xx responses, so the HTTP status has to be captured
+-- explicitly -- otherwise a rate-limit page is handed to the JSON parser and
+-- surfaces as a confusing decode error. %{stderr} sends the status down stderr,
+-- which leaves stdout as the pristine response body (appending it to stdout
+-- would corrupt any body whose own last line happened to be three digits).
+local STATUS_WRITEOUT = "%{stderr}%{http_code}"
+
 local function build_curl(req, timeout)
-    local parts = { "curl", "-sS", "--max-time", tostring(timeout) }
+    local parts = { "curl", "-sS", "--max-time", tostring(timeout),
+                    "-w", shquote(STATUS_WRITEOUT) }
     for name, value in pairs(req.headers or {}) do
         parts[#parts + 1] = "-H"
         parts[#parts + 1] = shquote(name .. ": " .. value)
     end
     parts[#parts + 1] = shquote(req.url)
     return table.concat(parts, " ")
+end
+
+--- Pull the HTTP status off the tail of stderr, leaving any curl message.
+-- Returns message, status. status is 0 when no HTTP response was received
+-- (connection refused, DNS failure, timeout), and nil if curl wrote nothing.
+local function split_status(err)
+    if type(err) ~= "string" then return "", nil end
+    local msg, status = err:match("^(.-)(%d%d%d)%s*$")
+    if status then return (msg:gsub("%s+$", "")), tonumber(status) end
+    return (err:gsub("%s+$", "")), nil
 end
 
 local function load_provider(p)
@@ -325,6 +343,7 @@ function M.new(user_args)
 
     local timer
     local pending = 0
+    local inflight = {}   -- symbol -> true while a request is outstanding
 
     local function interval_for_state()
         local state
@@ -341,41 +360,81 @@ function M.new(user_args)
         return cfg.refresh_open   -- UNKNOWN: provider has no calendar, poll normally
     end
 
+    --- Interpret one completed curl run for a symbol.
+    -- Order matters: transport failure, then HTTP status, then parse. An HTTP
+    -- error body is still offered to the provider first, because APIs often
+    -- return a useful structured message alongside a 4xx.
+    local function handle_response(sym, stdout, stderr, exitcode)
+        local cmsg, status = split_status(stderr)
+
+        if exitcode ~= 0 then
+            -- Transport failure: no HTTP response at all.
+            return nil, "request failed (curl " .. tostring(exitcode) .. ")"
+                        .. ((cmsg ~= "") and (": " .. cmsg) or "")
+        end
+
+        local body = stdout or ""
+
+        local pok, res, perr = pcall(provider.parse, body, sym)
+        local parsed = pok and res or nil
+
+        if status and status >= 400 then
+            -- If the body is JSON the provider's own message is the useful one
+            -- (APIs return structured errors with a 4xx). If it is not JSON the
+            -- provider only reports a decode failure, and the raw body -- a
+            -- rate-limit notice, an HTML error page -- says far more.
+            local trimmed = body:gsub("^%s+", "")
+            local looks_json = trimmed:sub(1, 1) == "{" or trimmed:sub(1, 1) == "["
+            local detail
+            if looks_json and pok and not res and perr then
+                detail = perr
+            else
+                detail = trimmed:gsub("%s+", " "):gsub("%s+$", ""):sub(1, 60)
+                if detail == "" then detail = "empty body" end
+            end
+            return nil, string.format("HTTP %d: %s", status, detail)
+        end
+
+        if not pok then return nil, "parse error: " .. tostring(res) end
+        if not parsed then return nil, perr or "no data" end
+        return parsed, nil
+    end
+
+    --- Re-arm the poll timer if the market state implies a different interval.
+    local function rearm()
+        if pending ~= 0 or not timer then return end
+        local want = interval_for_state()
+        if timer.timeout ~= want then
+            timer.timeout = want
+            timer:again()
+        end
+    end
+
     local function fetch_all()
         for _, sym in ipairs(cfg.symbols) do
-            local ok, req = pcall(provider.request, sym, opts)
-            if not ok or type(req) ~= "table" or not req.url then
-                quotes[sym] = { err = "provider.request failed" }
-                boxes[sym].markup = format_quote(cfg, sym, nil, quotes[sym].err)
-                refresh_tooltip(sym)
-            else
-                pending = pending + 1
-                awful.spawn.easy_async_with_shell(build_curl(req, cfg.timeout),
-                    function(stdout, stderr, _, exitcode)
-                        pending = pending - 1
-                        local q, err
-                        if exitcode ~= 0 then
-                            err = "curl exit " .. tostring(exitcode)
-                                  .. ((stderr and stderr ~= "") and (": " .. stderr:gsub("%s+$", "")) or "")
-                        else
-                            local pok, res, perr2 = pcall(provider.parse, stdout, sym)
-                            if not pok then err = "parse error: " .. tostring(res)
-                            elseif not res then err = perr2 or "no data"
-                            else q = res end
-                        end
-                        quotes[sym] = { quote = q, err = err }
-                        boxes[sym].markup = format_quote(cfg, sym, q, err)
-                        refresh_tooltip(sym)
-
-                        -- Re-arm on the interval the market state implies.
-                        if pending == 0 and timer then
-                            local want = interval_for_state()
-                            if timer.timeout ~= want then
-                                timer.timeout = want
-                                timer:again()
-                            end
-                        end
-                    end)
+            -- Skip symbols already in flight. Without this a middle-click
+            -- refresh during a slow poll issues a second request for the same
+            -- symbol, and the two replies can land out of order.
+            if not inflight[sym] then
+                local ok, req = pcall(provider.request, sym, opts)
+                if not ok or type(req) ~= "table" or not req.url then
+                    quotes[sym] = { err = "provider.request failed" }
+                    boxes[sym].markup = format_quote(cfg, sym, nil, quotes[sym].err)
+                    refresh_tooltip(sym)
+                else
+                    inflight[sym] = true
+                    pending = pending + 1
+                    awful.spawn.easy_async_with_shell(build_curl(req, cfg.timeout),
+                        function(stdout, stderr, _, exitcode)
+                            inflight[sym] = nil
+                            pending = pending - 1
+                            local q, err = handle_response(sym, stdout, stderr, exitcode)
+                            quotes[sym] = { quote = q, err = err }
+                            boxes[sym].markup = format_quote(cfg, sym, q, err)
+                            refresh_tooltip(sym)
+                            rearm()
+                        end)
+                end
             end
         end
     end
