@@ -49,17 +49,6 @@ In your `rc.lua`, near the other widget requires:
 local stocks_widget = require("awesomewm-stock-ticker")
 ```
 
-The module resolves its own name at load time, so if you prefer a shorter
-directory name just clone it as that and `require` it by the same name — no
-edits needed:
-
-```sh
-git clone https://github.com/arjunadeltoso/awesomewm-stock-ticker ~/.config/awesome/stocks
-```
-```lua
-local stocks_widget = require("stocks")
-```
-
 and in your wibar's right-hand widget list:
 
 ```lua
