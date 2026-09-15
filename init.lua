@@ -72,6 +72,19 @@ local defaults = {
     percent_format   = "%+.2f%%",
     separator        = "  ",
     font             = nil,
+
+    -- Full control over the rendered text. When nil, the layout is built from
+    -- the show_* flags above. Either:
+    --   a string template with ${placeholders}, or
+    --   a function(fields) returning pango markup.
+    -- See the "Custom formatting" section of the README for the field list.
+    text_format      = nil,
+    -- Colour applied to the symbol when text_format is in use. nil leaves it
+    -- the theme's foreground colour.
+    color_symbol     = nil,
+    -- Colour applied to the price when text_format is in use. nil leaves it
+    -- the theme's foreground colour; set to "change" to colour it by the move.
+    color_price      = nil,
     -- Left click on a ticker. Called with (symbol, quote).
     -- Defaults to opening the provider's quote page via xdg-open; set to
     -- false to disable, or supply your own function.
@@ -118,22 +131,84 @@ local function markup(cfg, text, color)
     return string.format("<span foreground='%s'>%s</span>", color, t)
 end
 
+--- Colour implied by a quote's move: up, down, or flat/unknown.
+local function change_color(cfg, q)
+    if q and q.change_percent then
+        if q.change_percent > 0 then return cfg.color_up end
+        if q.change_percent < 0 then return cfg.color_down end
+    end
+    return cfg.color_flat or beautiful.fg_normal or "#ffffff"
+end
+
+--- Substitute ${placeholders} in a template.
+-- Template may instead be a function, which is called with the field table and
+-- must return markup -- that escape hatch means any layout is reachable without
+-- growing the option list.
+-- Unknown placeholders render empty rather than raising, so a typo degrades to
+-- a gap instead of breaking the wibar.
+local function substitute(template, fields)
+    if type(template) == "function" then
+        return tostring(template(fields) or "")
+    end
+    return (template:gsub("%${([%w_]+)}", function(key)
+        local v = fields[key]
+        return v ~= nil and tostring(v) or ""
+    end))
+end
+
+--- Build the ${placeholder} table for one quote.
+local function template_fields(cfg, symbol, q)
+    local chg = change_color(cfg, q)
+    local function on(c) return c and string.format("<span foreground='%s'>", c) or "" end
+    local function off(c) return c and "</span>" or "" end
+
+    -- color_price = "change" means "colour the price by the day's move".
+    local price_color = cfg.color_price
+    if price_color == "change" then price_color = chg end
+
+    local f = {
+        symbol         = q and q.symbol or symbol,
+        name           = q and q.name or "",
+        price          = q and string.format(cfg.price_format, q.price) or "",
+        change         = q and q.change and string.format("%+.2f", q.change) or "",
+        change_percent = q and q.change_percent
+                         and string.format(cfg.percent_format, q.change_percent) or "",
+        previous_close = q and q.previous_close
+                         and string.format(cfg.price_format, q.previous_close) or "",
+        currency       = q and q.currency or "",
+        market_state   = q and q.market_state or "",
+        -- Arrow reflecting direction; empty when flat or unknown.
+        arrow          = (q and q.change_percent and q.change_percent > 0 and "\u{25B2}")
+                         or (q and q.change_percent and q.change_percent < 0 and "\u{25BC}")
+                         or "",
+    }
+    f.change_color_on,  f.change_color_off  = on(chg), off(chg)
+    f.symbol_color_on,  f.symbol_color_off  = on(cfg.color_symbol), off(cfg.color_symbol)
+    f.price_color_on,   f.price_color_off   = on(price_color), off(price_color)
+    return f
+end
+
 --- Render one quote (or its error) as pango markup.
 local function format_quote(cfg, symbol, q, err)
     if err or not q then
         return markup(cfg, symbol .. " ?", cfg.color_error)
     end
-    local color = cfg.color_flat or beautiful.fg_normal or "#ffffff"
-    if q.change_percent and q.change_percent > 0 then color = cfg.color_up
-    elseif q.change_percent and q.change_percent < 0 then color = cfg.color_down end
 
+    -- Custom layout: the template owns the colouring entirely.
+    if cfg.text_format then
+        local ok, out = pcall(substitute, cfg.text_format, template_fields(cfg, symbol, q))
+        if ok then return out end
+        return markup(cfg, symbol .. " !", cfg.color_error)
+    end
+
+    -- Default layout, built from the show_* flags.
     local bits = {}
     if cfg.show_name then bits[#bits + 1] = q.symbol or symbol end
     if cfg.show_price then bits[#bits + 1] = string.format(cfg.price_format, q.price) end
     if cfg.show_percent and q.change_percent then
         bits[#bits + 1] = string.format(cfg.percent_format, q.change_percent)
     end
-    return markup(cfg, table.concat(bits, " "), color)
+    return markup(cfg, table.concat(bits, " "), change_color(cfg, q))
 end
 
 local function format_tooltip(cfg, symbol, q, err)
