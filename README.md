@@ -39,14 +39,23 @@ Two things make it different from the usual ticker widget:
 ## Install
 
 ```sh
-git clone https://github.com/<you>/AwesomeWM-Stock-Ticker ~/.config/awesome/stocks
+git clone https://github.com/arjunadeltoso/awesomewm-stock-ticker \
+    ~/.config/awesome/awesomewm-stock-ticker
 ```
-
-The directory **must** be named `stocks` for `require("stocks")` to find it, or
-adjust the module name to match.
 
 In your `rc.lua`, near the other widget requires:
 
+```lua
+local stocks_widget = require("awesomewm-stock-ticker")
+```
+
+The module resolves its own name at load time, so if you prefer a shorter
+directory name just clone it as that and `require` it by the same name — no
+edits needed:
+
+```sh
+git clone https://github.com/arjunadeltoso/awesomewm-stock-ticker ~/.config/awesome/stocks
+```
 ```lua
 local stocks_widget = require("stocks")
 ```
@@ -183,7 +192,8 @@ complete one for a hypothetical authenticated JSON API:
 
 ```lua
 -- providers/example.lua
-local json = require("stocks.json")
+local ROOT = (...):match("^(.-)%.providers%.")
+local json = require(ROOT .. ".json")
 
 local P = {
     name      = "example",
@@ -343,16 +353,16 @@ curl -sS -H 'User-Agent: Mozilla/5.0' \
   'https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=1d' | head -c 400
 ```
 
-**Nothing appears in the wibar.** Check `require("stocks")` resolves — the
-directory must be `~/.config/awesome/stocks/` with `init.lua` inside — then look
-in `~/.xsession-errors` for a traceback.
+**Nothing appears in the wibar.** Check that the name you `require()` matches
+the directory under `~/.config/awesome/`, with `init.lua` directly inside it,
+then look in `~/.xsession-errors` for a traceback.
 
 **Debugging live.** If awesome is running you can test without restarting:
 
 ```sh
 awesome-client '
-  package.loaded["stocks.providers.yahoo"] = nil
-  local y = require("stocks.providers.yahoo")
+  package.loaded["awesomewm-stock-ticker.providers.yahoo"] = nil
+  local y = require("awesomewm-stock-ticker.providers.yahoo")
   return y.request("AAPL", {}).url'
 ```
 
