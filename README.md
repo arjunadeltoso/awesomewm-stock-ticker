@@ -251,6 +251,7 @@ complete one for a hypothetical authenticated JSON API:
 -- providers/example.lua
 local ROOT = (...):match("^(.-)%.providers%.")
 local json = require(ROOT .. ".json")
+local url  = require(ROOT .. ".url")
 
 local P = {
     name      = "example",
@@ -265,7 +266,7 @@ local P = {
 function P.request(symbol, opts)
     return {
         url = string.format("%s/v1/quote?symbol=%s",
-                            opts.host or "https://api.example.com", symbol),
+                            opts.host or "https://api.example.com", url.encode(symbol)),
         headers = {
             Authorization = "Bearer " .. (opts.api_key or ""),
             Accept        = "application/json",
@@ -335,6 +336,11 @@ stocks_widget({
    provide — the widget adapts.
 4. **`change_percent` drives the colour.** If you omit it but supply
    `previous_close`, the widget computes it.
+5. **Percent-encode the symbol** with `url.encode()`. Tickers like `^GSPC`,
+   `EURUSD=X`, and anything containing `&`, `#`, `?` or a space will otherwise
+   change the meaning of the URL or make it invalid. Encoding is safe for plain
+   symbols — servers decode before matching, so `%5EGSPC` and `^GSPC` resolve
+   identically.
 
 ### JSON null
 
