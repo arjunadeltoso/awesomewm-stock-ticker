@@ -14,6 +14,7 @@
 -- regardless of what the containing directory is called.
 local ROOT = (...):match("^(.-)%.providers%.") or "awesomewm-stock-ticker"
 local json = require(ROOT .. ".json")
+local url  = require(ROOT .. ".url")
 
 local P = { name = "finnhub", needs_key = true,
               quote_url = "https://finnhub.io/quote/%s" }
@@ -22,7 +23,7 @@ function P.request(symbol, opts)
     opts = opts or {}
     local host = opts.host or "https://finnhub.io/api/v1"
     return {
-        url = string.format("%s/quote?symbol=%s", host, symbol),
+        url = string.format("%s/quote?symbol=%s", host, url.encode(symbol)),
         -- Sent as a header rather than a query param so the key stays out of
         -- any URL that might be logged.
         headers = { ["X-Finnhub-Token"] = opts.api_key or "" },

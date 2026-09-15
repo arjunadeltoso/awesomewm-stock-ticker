@@ -13,6 +13,7 @@
 -- regardless of what the containing directory is called.
 local ROOT = (...):match("^(.-)%.providers%.") or "awesomewm-stock-ticker"
 local json = require(ROOT .. ".json")
+local url  = require(ROOT .. ".url")
 
 local P = { name = "yahoo", needs_key = false,
               quote_url = "https://finance.yahoo.com/quote/%s" }
@@ -26,7 +27,7 @@ function P.request(symbol, opts)
     local host = opts.host or "https://query1.finance.yahoo.com"
     return {
         url = string.format("%s/v8/finance/chart/%s?interval=1d&range=1d",
-                            host, symbol),
+                            host, url.encode(symbol)),
         -- Yahoo rejects requests without a browser-ish UA.
         headers = { ["User-Agent"] = opts.user_agent or "Mozilla/5.0" },
     }
