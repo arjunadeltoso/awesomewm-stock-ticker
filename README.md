@@ -144,12 +144,17 @@ symbol neutral and colours only the price and the change:
 stocks_widget({
     symbols      = { "AAPL", "META" },
     color_symbol = "#FFFFFF",
-    color_price  = "change",   -- colour the price by the day's move
     text_format  = "${symbol_color_on}${symbol}${symbol_color_off} "
-                .. "${price_color_on}${price}${price_color_off} "
+                .. "${price} "
                 .. "${change_color_on}${change_percent}${change_color_off}",
 }),
 ```
+
+![White symbol, coloured change](screenshot-text-format.png)
+
+Compared with the default style at the top of this page, colour now carries a
+single meaning — the day's move — while the symbol stays neutral. Add
+`color_price = "change"` to tint the price by the move as well.
 
 ### Fields
 
