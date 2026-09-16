@@ -140,10 +140,11 @@ goes on the wibar: it is tooltip-only, or `${name}` in a
 
 ## Colour
 
-By default only the change percentage is coloured — green up, red down — while
-the symbol and price stay in the theme's foreground colour. `color_symbol` and
-`color_price` each take either a colour or the string `"change"`, which colours
-that element by the day's move:
+Each element is coloured on its own. The change percentage always follows the
+day's move — `color_up` when positive, `color_down` when negative, `color_flat`
+otherwise. The symbol and price take `color_symbol` and `color_price`, each of
+which accepts either a colour or the string `"change"` to follow the move as
+well. Both default to the theme's foreground colour.
 
 ```lua
 stocks_widget({
@@ -153,8 +154,9 @@ stocks_widget({
 }),
 ```
 
-The widget's pre-1.0 style — no state dot, and every element tinted by the
-move — is a few options away:
+Setting both to `"change"` puts the whole ticker in one colour, so a red line
+is visible without reading it. Dropping the state symbol as well leaves just
+the numbers:
 
 ```lua
 stocks_widget({
@@ -167,8 +169,9 @@ stocks_widget({
 
 ![Symbol, price and change all coloured by the move](screenshot-compact.png)
 
-The up, down and flat colours themselves are `color_up`, `color_down` and
-`color_flat`.
+Going the other way, giving `color_up` and `color_down` the same value drains
+the move of colour and leaves the sign on the percentage to carry it — though
+the state symbol keeps its own colours until you turn those off as well.
 
 ## Custom formatting
 
@@ -247,6 +250,12 @@ Each ticker carries a small symbol showing what its exchange is doing right now:
 | `CLOSED` | ○ | `#808080` grey | closed |
 | `UNKNOWN` | *nothing* | – | provider reports no calendar |
 
+It is one shape at three fills, so the states read at a glance even in a theme
+where the colours are hard to tell apart: **solid** while the exchange is fully
+open, **half** when only the extended session is running, **hollow** once it is
+shut. The two halves lean the way the session sits around the trading day —
+`◐` fills its left for pre-market, `◑` its right for after hours.
+
 The state comes with the quote, so it is the exchange's own answer — the widget
 has no calendar of its own. Providers that cannot report one (`finnhub`, for
 example) show no symbol at all rather than guessing.
@@ -258,21 +267,42 @@ stocks_widget({ symbols = { "AAPL" }, show_market_state = false }),
 stocks_widget({ symbols = { "AAPL" }, market_state_position = "after" }),
 ```
 
-Symbols and colours are set per state. Both tables are merged with the defaults
-key by key, so what you leave out keeps its default:
+### Choosing your own symbols
+
+`market_state_symbols` and `market_state_colors` are keyed by state. Both are
+merged with the defaults key by key, so a table naming one state leaves the
+other four alone. Any string works — a glyph, an emoji, a word.
+
+Moon phases, full at the open and new at the close:
 
 ```lua
 stocks_widget({
     symbols              = { "AAPL", "ENI.MI" },
-    -- nothing while trading, a moon once the bell rings
-    market_state_symbols = { REGULAR = "", CLOSED = "\u{1F319}" },
-    market_state_colors  = { CLOSED = "#555555" },
+    market_state_symbols = { REGULAR = "🌕", PRE = "🌔", POST = "🌖", CLOSED = "🌑" },
+    -- emoji carry their own colour, so leave the tinting off
+    market_state_colors  = { REGULAR = false, PRE = false, POST = false, CLOSED = false },
 }),
 ```
 
-Setting a state's symbol to `""` hides it for that state — which is how you get
-"only tell me when the market is *not* open". A colour of `false` leaves that
-symbol in the theme's foreground colour.
+Or a single moon that turns up only once trading stops, saying nothing the rest
+of the day:
+
+```lua
+market_state_symbols = { REGULAR = "", PRE = "", POST = "", CLOSED = "🌙" },
+market_state_colors  = { CLOSED = false },
+```
+
+Or words, for a bar with room to spare:
+
+```lua
+market_state_symbols = { REGULAR = "open", PRE = "pre", POST = "AH", CLOSED = "closed" },
+market_state_position = "after",
+```
+
+Two rules govern the rest: a symbol of `""` hides that state — which is how the
+examples above stay quiet while the market is open — and a colour of `false`
+leaves the symbol in the theme's foreground colour. Emoji can also be written
+as escapes if you prefer plain-ASCII config: `"\u{1F319}"` is `🌙`.
 
 Under `text_format` the indicator is a placeholder like any other:
 
