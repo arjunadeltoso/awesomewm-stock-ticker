@@ -65,7 +65,7 @@ local defaults = {
     color_down       = "#D05050",
     color_flat       = nil,          -- nil -> beautiful.fg_normal
     color_error      = "#E0A030",
-    show_name        = false,        -- prefix each quote with its symbol
+    show_symbol      = true,         -- prefix each quote with its ticker symbol
     show_percent     = true,
     show_price       = true,
     price_format     = "%.2f",
@@ -103,11 +103,11 @@ local defaults = {
     --   a function(fields) returning pango markup.
     -- See the "Custom formatting" section of the README for the field list.
     text_format      = nil,
-    -- Colour applied to the symbol when text_format is in use. nil leaves it
-    -- the theme's foreground colour.
+    -- Colour applied to the symbol. nil leaves it the theme's foreground
+    -- colour; "change" colours it by the day's move.
     color_symbol     = nil,
-    -- Colour applied to the price when text_format is in use. nil leaves it
-    -- the theme's foreground colour; set to "change" to colour it by the move.
+    -- Colour applied to the price, same two options. Leaving both neutral is
+    -- the default: colour on the wibar then means one thing, the day's move.
     color_price      = nil,
     -- Left click on a ticker. Called with (symbol, quote).
     -- Defaults to opening the provider's quote page via xdg-open; set to
@@ -182,6 +182,14 @@ local function change_color(cfg, q)
     return cfg.color_flat or beautiful.fg_normal or "#ffffff"
 end
 
+--- Resolve a per-element colour option against the day's move.
+-- "change" means "colour this by the move"; anything else is used as given,
+-- and nil leaves the element in the theme's foreground colour.
+local function element_color(opt, chg)
+    if opt == "change" then return chg end
+    return opt
+end
+
 -- Human-readable market states, used in the tooltip. Unknown codes fall back
 -- to the provider's own spelling.
 local STATE_LABELS = {
@@ -225,10 +233,6 @@ local function template_fields(cfg, symbol, q)
     local function on(c) return c and string.format("<span foreground='%s'>", c) or "" end
     local function off(c) return c and "</span>" or "" end
 
-    -- color_price = "change" means "colour the price by the day's move".
-    local price_color = cfg.color_price
-    if price_color == "change" then price_color = chg end
-
     local f = {
         symbol         = q and q.symbol or symbol,
         name           = q and q.name or "",
@@ -253,7 +257,9 @@ local function template_fields(cfg, symbol, q)
     f.market_state_color_on, f.market_state_color_off = on(state_color), off(state_color)
 
     f.change_color_on,  f.change_color_off  = on(chg), off(chg)
-    f.symbol_color_on,  f.symbol_color_off  = on(cfg.color_symbol), off(cfg.color_symbol)
+    local sym_color   = element_color(cfg.color_symbol, chg)
+    local price_color = element_color(cfg.color_price, chg)
+    f.symbol_color_on,  f.symbol_color_off  = on(sym_color), off(sym_color)
     f.price_color_on,   f.price_color_off   = on(price_color), off(price_color)
     return f
 end
@@ -271,14 +277,23 @@ local function format_quote(cfg, symbol, q, err)
         return markup(cfg, symbol .. " !", cfg.color_error)
     end
 
-    -- Default layout, built from the show_* flags.
+    -- Default layout, built from the show_* flags. Each element is coloured
+    -- on its own: only the change carries the up/down colour unless the symbol
+    -- or price is explicitly set to "change" as well.
+    local chg = change_color(cfg, q)
     local bits = {}
-    if cfg.show_name then bits[#bits + 1] = q.symbol or symbol end
-    if cfg.show_price then bits[#bits + 1] = string.format(cfg.price_format, q.price) end
-    if cfg.show_percent and q.change_percent then
-        bits[#bits + 1] = string.format(cfg.percent_format, q.change_percent)
+    if cfg.show_symbol then
+        bits[#bits + 1] = markup(cfg, q.symbol or symbol,
+                                 element_color(cfg.color_symbol, chg))
     end
-    local text = markup(cfg, table.concat(bits, " "), change_color(cfg, q))
+    if cfg.show_price then
+        bits[#bits + 1] = markup(cfg, string.format(cfg.price_format, q.price),
+                                 element_color(cfg.color_price, chg))
+    end
+    if cfg.show_percent and q.change_percent then
+        bits[#bits + 1] = markup(cfg, string.format(cfg.percent_format, q.change_percent), chg)
+    end
+    local text = table.concat(bits, " ")
 
     -- The indicator is coloured by market state, not by the day's move, so it
     -- is rendered as its own span alongside the quote.
