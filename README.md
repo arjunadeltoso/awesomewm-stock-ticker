@@ -1,7 +1,8 @@
 # AwesomeWM Stock Ticker
 
 A stock ticker widget for [awesome](https://awesomewm.org) 4.x. Live quotes in
-your wibar, coloured by the day's move, with a detail tooltip on hover.
+your wibar, coloured by the day's move, each with a dot showing whether its
+exchange is open, and a detail tooltip on hover.
 
 ![The widget in an awesome wibar](screenshot.png)
 
@@ -20,6 +21,7 @@ Two things make it different from the usual ticker widget:
 - [Install](#install)
 - [Configuring tickers](#configuring-tickers)
 - [All options](#all-options)
+- [Market state](#market-state)
 - [Polling and market hours](#polling-and-market-hours)
 - [Built-in providers](#built-in-providers)
 - [Writing your own provider](#writing-your-own-provider)
@@ -105,6 +107,10 @@ stocks_widget({ symbols = { "BTC-USD" }, refresh_closed = 60 }),
 | `price_format` | `"%.2f"` | `string.format` pattern for prices |
 | `percent_format` | `"%+.2f%%"` | `string.format` pattern for the change |
 | `separator` | `"  "` | text between tickers |
+| `show_market_state` | `true` | show the market-state symbol on each ticker |
+| `market_state_position` | `"before"` | `"before"` or `"after"` the quote |
+| `market_state_symbols` | `● ◐ ◑ ○` | symbol per state — see [Market state](#market-state) |
+| `market_state_colors` | green / amber / grey | colour per state, merged with the defaults |
 | `text_format` | – | custom layout: `${placeholder}` template or a function — see below |
 | `color_symbol` | – | symbol colour when `text_format` is used |
 | `color_price` | – | price colour when `text_format` is used; `"change"` colours it by the move |
@@ -168,10 +174,12 @@ single meaning — the day's move — while the symbol stays neutral. Add
 | `${previous_close}` | `333.08` |
 | `${currency}` | `USD` |
 | `${market_state}` | `REGULAR` |
+| `${market_state_symbol}` | `●`, empty when off or unknown |
 | `${arrow}` | `▲` / `▼`, empty when flat |
 | `${symbol_color_on}` / `${symbol_color_off}` | span tags for `color_symbol` |
 | `${price_color_on}` / `${price_color_off}` | span tags for `color_price` |
 | `${change_color_on}` / `${change_color_off}` | span tags for the up/down colour |
+| `${market_state_color_on}` / `${market_state_color_off}` | span tags for the state colour |
 
 A placeholder with no value renders empty, so a typo leaves a gap rather than
 breaking the widget.
@@ -189,6 +197,51 @@ end,
 
 If it raises, that ticker shows an error marker and the rest keep working.
 
+## Market state
+
+Each ticker carries a small symbol showing what its exchange is doing right now:
+
+| state | symbol | colour | meaning |
+|---|---|---|---|
+| `REGULAR` | ● | `#8CC63F` green | regular trading |
+| `PRE` | ◐ | `#E0A030` amber | pre-market |
+| `POST` | ◑ | `#E0A030` amber | after hours |
+| `CLOSED` | ○ | `#808080` grey | closed |
+| `UNKNOWN` | *nothing* | – | provider reports no calendar |
+
+The state comes with the quote, so it is the exchange's own answer — the widget
+has no calendar of its own. Providers that cannot report one (`finnhub`, for
+example) show no symbol at all rather than guessing.
+
+Turn it off, or put it after the quote instead of before:
+
+```lua
+stocks_widget({ symbols = { "AAPL" }, show_market_state = false }),
+stocks_widget({ symbols = { "AAPL" }, market_state_position = "after" }),
+```
+
+Symbols and colours are set per state. Both tables are merged with the defaults
+key by key, so what you leave out keeps its default:
+
+```lua
+stocks_widget({
+    symbols              = { "AAPL", "ENI.MI" },
+    -- nothing while trading, a moon once the bell rings
+    market_state_symbols = { REGULAR = "", CLOSED = "\u{1F319}" },
+    market_state_colors  = { CLOSED = "#555555" },
+}),
+```
+
+Setting a state's symbol to `""` hides it for that state — which is how you get
+"only tell me when the market is *not* open". A colour of `false` leaves that
+symbol in the theme's foreground colour.
+
+Under `text_format` the indicator is a placeholder like any other:
+
+```lua
+text_format = "${symbol} ${market_state_color_on}${market_state_symbol}${market_state_color_off} ${price}",
+```
+
 ## Polling and market hours
 
 The widget keeps **no market calendar**. Providers report a `market_state` with
@@ -201,6 +254,7 @@ each quote, and the poll interval follows it:
 | `CLOSED` | `refresh_closed` (900s) |
 | `UNKNOWN` | `refresh_open` |
 
+The same state drives the symbol described in [Market state](#market-state).
 So nights, weekends and public holidays back off on their own, and daylight
 saving is handled by whoever actually knows — the exchange. Providers that
 cannot report state are polled at `refresh_open` throughout; set that
@@ -381,7 +435,7 @@ required.
 | `timezone` | string | informational |
 | `day_high`, `day_low` | number | tooltip day range |
 | `week52_high`, `week52_low` | number | tooltip 52-week range |
-| `market_state` | string | `REGULAR`, `PRE`, `POST`, `CLOSED`, `UNKNOWN` — **drives the poll interval** |
+| `market_state` | string | `REGULAR`, `PRE`, `POST`, `CLOSED`, `UNKNOWN` — **drives the poll interval and the state symbol** |
 | `trading` | table | `{ regular = { start, stop }, pre = …, post = … }`, epoch seconds |
 | `timestamp` | number | tooltip "updated" time, epoch seconds |
 

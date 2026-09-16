@@ -73,6 +73,30 @@ local defaults = {
     separator        = "  ",
     font             = nil,
 
+    -- Market-state indicator: a small symbol showing whether the exchange is
+    -- trading, in extended hours, or closed. It comes from the quote's
+    -- market_state, so providers without a calendar (UNKNOWN) show nothing.
+    show_market_state     = true,
+    market_state_position = "before",   -- "before" | "after" the quote
+    -- Glyph per state. Merged key by key with the defaults, so overriding one
+    -- state keeps the rest. Set a state to "" to hide it.
+    market_state_symbols  = {
+        REGULAR = "\u{25CF}",   -- filled circle
+        PRE     = "\u{25D0}",   -- half-filled circle
+        POST    = "\u{25D1}",
+        CLOSED  = "\u{25CB}",   -- hollow circle
+        UNKNOWN = "",
+    },
+    -- Colour per state, merged the same way. false leaves a state the theme's
+    -- foreground colour.
+    market_state_colors   = {
+        REGULAR = "#8CC63F",
+        PRE     = "#E0A030",
+        POST    = "#E0A030",
+        CLOSED  = "#808080",
+        UNKNOWN = false,
+    },
+
     -- Full control over the rendered text. When nil, the layout is built from
     -- the show_* flags above. Either:
     --   a string template with ${placeholders}, or
@@ -158,6 +182,27 @@ local function change_color(cfg, q)
     return cfg.color_flat or beautiful.fg_normal or "#ffffff"
 end
 
+-- Human-readable market states, used in the tooltip. Unknown codes fall back
+-- to the provider's own spelling.
+local STATE_LABELS = {
+    REGULAR = "open",
+    PRE     = "pre-market",
+    POST    = "after hours",
+    CLOSED  = "closed",
+}
+
+--- The glyph and colour for a quote's market state.
+-- Returns nil when there is nothing to show: the indicator is switched off,
+-- there is no quote yet, or the provider reports no calendar (UNKNOWN, whose
+-- glyph is empty by default) -- so callers can skip the separating space.
+local function state_symbol(cfg, q)
+    if not cfg.show_market_state then return nil end
+    local state = q and q.market_state or "UNKNOWN"
+    local glyph = cfg.market_state_symbols[state]
+    if not glyph or glyph == "" then return nil end
+    return glyph, cfg.market_state_colors[state]
+end
+
 --- Substitute ${placeholders} in a template.
 -- Template may instead be a function, which is called with the field table and
 -- must return markup -- that escape hatch means any layout is reachable without
@@ -200,6 +245,13 @@ local function template_fields(cfg, symbol, q)
                          or (q and q.change_percent and q.change_percent < 0 and "\u{25BC}")
                          or "",
     }
+    -- Market-state indicator. The glyph is empty when the indicator is off or
+    -- the provider reports no calendar, so a template carrying it degrades to a
+    -- gap rather than a stray dot.
+    local glyph, state_color = state_symbol(cfg, q)
+    f.market_state_symbol = glyph or ""
+    f.market_state_color_on, f.market_state_color_off = on(state_color), off(state_color)
+
     f.change_color_on,  f.change_color_off  = on(chg), off(chg)
     f.symbol_color_on,  f.symbol_color_off  = on(cfg.color_symbol), off(cfg.color_symbol)
     f.price_color_on,   f.price_color_off   = on(price_color), off(price_color)
@@ -226,7 +278,15 @@ local function format_quote(cfg, symbol, q, err)
     if cfg.show_percent and q.change_percent then
         bits[#bits + 1] = string.format(cfg.percent_format, q.change_percent)
     end
-    return markup(cfg, table.concat(bits, " "), change_color(cfg, q))
+    local text = markup(cfg, table.concat(bits, " "), change_color(cfg, q))
+
+    -- The indicator is coloured by market state, not by the day's move, so it
+    -- is rendered as its own span alongside the quote.
+    local glyph, state_color = state_symbol(cfg, q)
+    if not glyph then return text end
+    local ind = markup(cfg, glyph, state_color)
+    if cfg.market_state_position == "after" then return text .. " " .. ind end
+    return ind .. " " .. text
 end
 
 local function format_tooltip(cfg, symbol, q, err)
@@ -251,7 +311,8 @@ local function format_tooltip(cfg, symbol, q, err)
             string.format(cfg.price_format, q.week52_low), string.format(cfg.price_format, q.week52_high))
     end
     if q.market_state and q.market_state ~= "UNKNOWN" then
-        L[#L + 1] = string.format("  market     %s", q.market_state)
+        L[#L + 1] = string.format("  market     %s",
+            STATE_LABELS[q.market_state] or q.market_state)
     end
     if q.exchange then L[#L + 1] = string.format("  exchange   %s", q.exchange) end
     if q.timestamp then
@@ -272,6 +333,15 @@ function M.new(user_args)
     local cfg = {}
     for k, v in pairs(defaults) do cfg[k] = v end
     for k, v in pairs(user_args) do cfg[k] = v end
+
+    -- The per-state tables are merged key by key rather than replaced, so
+    -- recolouring one state does not silently drop the other four.
+    for _, key in ipairs({ "market_state_symbols", "market_state_colors" }) do
+        local merged = {}
+        for k, v in pairs(defaults[key]) do merged[k] = v end
+        for k, v in pairs(user_args[key] or {}) do merged[k] = v end
+        cfg[key] = merged
+    end
 
     local container = wibox.widget {
         layout  = wibox.layout.fixed.horizontal,
