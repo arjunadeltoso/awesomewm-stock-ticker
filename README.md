@@ -1,15 +1,29 @@
 # AwesomeWM Stock Ticker
 
-A stock ticker widget for [awesome](https://awesomewm.org) 4.x. Live quotes in
-your wibar, a dot showing whether each exchange is open, and a detail tooltip
-on hover.
+A stock ticker widget for [awesome](https://awesomewm.org) 4.x — live quotes in
+your wibar, polled on a schedule that follows each exchange's own trading hours.
 
 ![The widget in an awesome wibar](screenshot.png)
 
-Out of the box: symbol and price in the theme's foreground colour, so the only
-colour on the bar means one thing — the day's move. (The symbol above is
-brightened to `#FFFFFF`; see [Colour](#colour).) Hovering a ticker shows a
-tooltip with its full information.
+Each ticker reads left to right:
+
+```
+● AAPL 333.73 +0.72%
+│  │     │      └────  change since the previous close — green up, red down
+│  │     └───────────  last traded price
+│  └─────────────────  the ticker symbol, exactly as you listed it
+└────────────────────  market state: ● open · ◐ pre-market · ◑ after hours · ○ closed
+```
+
+Symbol and price sit in the theme's foreground colour, so the only colour on
+the bar means one thing — the day's move. (The symbol in the screenshot is
+brightened to `#FFFFFF`; see [Colour](#colour).) A provider that reports no
+trading calendar shows no state symbol at all, and every part can be recoloured,
+hidden or [rearranged](#custom-formatting).
+
+Hovering a ticker opens a tooltip with the rest: company name, change in both
+currency and percent, previous close, day and 52-week ranges, exchange, the time
+of the last update, and which provider the quote came from.
 
 Two things make it different from the usual ticker widget:
 
