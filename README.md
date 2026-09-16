@@ -1,12 +1,15 @@
 # AwesomeWM Stock Ticker
 
 A stock ticker widget for [awesome](https://awesomewm.org) 4.x. Live quotes in
-your wibar, coloured by the day's move, each with a dot showing whether its
-exchange is open, and a detail tooltip on hover.
+your wibar, a dot showing whether each exchange is open, and a detail tooltip
+on hover.
 
 ![The widget in an awesome wibar](screenshot.png)
 
-Hovering a ticker shows a tooltip with its full information.
+Out of the box: symbol and price in the theme's foreground colour, so the only
+colour on the bar means one thing — the day's move. (The symbol above is
+brightened to `#FFFFFF`; see [Colour](#colour).) Hovering a ticker shows a
+tooltip with its full information.
 
 Two things make it different from the usual ticker widget:
 
@@ -21,6 +24,7 @@ Two things make it different from the usual ticker widget:
 - [Install](#install)
 - [Configuring tickers](#configuring-tickers)
 - [All options](#all-options)
+- [Colour](#colour)
 - [Market state](#market-state)
 - [Polling and market hours](#polling-and-market-hours)
 - [Built-in providers](#built-in-providers)
@@ -66,8 +70,8 @@ Everything is passed inline where you place the widget in `rc.lua`:
 
 ```lua
 stocks_widget({
-    symbols   = { "AAPL", "META", "NVDA" },
-    show_name = true,
+    symbols        = { "AAPL", "META", "NVDA" },
+    percent_format = "%+.1f%%",
 }),
 ```
 
@@ -101,7 +105,7 @@ stocks_widget({ symbols = { "BTC-USD" }, refresh_closed = 60 }),
 | `refresh_extended` | `300` | poll seconds pre/post market |
 | `refresh_closed` | `900` | poll seconds when the market is closed |
 | `timeout` | `10` | curl timeout, seconds |
-| `show_name` | `false` | prefix each quote with its symbol |
+| `show_symbol` | `true` | prefix each quote with its ticker symbol |
 | `show_price` | `true` | show the price |
 | `show_percent` | `true` | show the change percentage |
 | `price_format` | `"%.2f"` | `string.format` pattern for prices |
@@ -112,8 +116,8 @@ stocks_widget({ symbols = { "BTC-USD" }, refresh_closed = 60 }),
 | `market_state_symbols` | `● ◐ ◑ ○` | symbol per state — see [Market state](#market-state) |
 | `market_state_colors` | green / amber / grey | colour per state, merged with the defaults |
 | `text_format` | – | custom layout: `${placeholder}` template or a function — see below |
-| `color_symbol` | – | symbol colour when `text_format` is used |
-| `color_price` | – | price colour when `text_format` is used; `"change"` colours it by the move |
+| `color_symbol` | theme fg | symbol colour, or `"change"` to colour it by the move |
+| `color_price` | theme fg | price colour, or `"change"` to colour it by the move |
 | `font` | theme default | font for the textboxes |
 | `color_up` | `#8CC63F` | colour when the day's change is positive |
 | `color_down` | `#D05050` | colour when negative |
@@ -121,6 +125,10 @@ stocks_widget({ symbols = { "BTC-USD" }, refresh_closed = 60 }),
 | `color_error` | `#E0A030` | colour for a failed ticker |
 | `on_click` | quote page | `function(symbol, quote)`, or `false` to disable |
 | `quote_url` | provider's | URL template for the default click action, `%s` = symbol |
+
+`show_symbol` toggles the ticker itself — `AAPL`. The company's full name never
+goes on the wibar: it is tooltip-only, or `${name}` in a
+[template](#custom-formatting).
 
 ### Mouse
 
@@ -130,10 +138,42 @@ stocks_widget({ symbols = { "BTC-USD" }, refresh_closed = 60 }),
 - **Middle click** — force an immediate refresh.
 - **Hover** — tooltip with full information for that ticker.
 
+## Colour
+
+By default only the change percentage is coloured — green up, red down — while
+the symbol and price stay in the theme's foreground colour. `color_symbol` and
+`color_price` each take either a colour or the string `"change"`, which colours
+that element by the day's move:
+
+```lua
+stocks_widget({
+    symbols      = { "AAPL", "META" },
+    color_symbol = "#FFFFFF",       -- brighter than the theme's foreground
+    color_price  = "change",        -- tint the price by the move too
+}),
+```
+
+The widget's pre-1.0 style — no state dot, and every element tinted by the
+move — is a few options away:
+
+```lua
+stocks_widget({
+    symbols           = { "AAPL", "META" },
+    color_symbol      = "change",
+    color_price       = "change",
+    show_market_state = false,
+}),
+```
+
+![Symbol, price and change all coloured by the move](screenshot-compact.png)
+
+The up, down and flat colours themselves are `color_up`, `color_down` and
+`color_flat`.
+
 ## Custom formatting
 
-The `show_*` flags cover the common layouts. For full control set `text_format`
-to a template with `${placeholder}` fields:
+The `show_*` and `color_*` options cover the common layouts. For full control
+set `text_format` to a template with `${placeholder}` fields:
 
 ```lua
 stocks_widget({
@@ -142,25 +182,23 @@ stocks_widget({
 }),
 ```
 
-When `text_format` is set the template owns the colouring, so wrap the parts you
-want coloured in the matching `*_color_on` / `*_color_off` pairs. This keeps the
-symbol neutral and colours only the price and the change:
+When `text_format` is set the template owns the layout *and* the colouring, so
+wrap the parts you want coloured in the matching `*_color_on` / `*_color_off`
+pairs. Those pairs follow the same `color_symbol` / `color_price` options, so
+`"change"` works here too:
 
 ```lua
 stocks_widget({
     symbols      = { "AAPL", "META" },
-    color_symbol = "#FFFFFF",
-    text_format  = "${symbol_color_on}${symbol}${symbol_color_off} "
-                .. "${price} "
-                .. "${change_color_on}${change_percent}${change_color_off}",
+    color_price  = "change",
+    text_format  = "${market_state_color_on}${market_state_symbol}${market_state_color_off} "
+                .. "${name}: ${price_color_on}${price}${price_color_off} "
+                .. "${change_color_on}${arrow}${change_color_off}",
 }),
 ```
 
-![White symbol, coloured change](screenshot-text-format.png)
-
-Compared with the default style at the top of this page, colour now carries a
-single meaning — the day's move — while the symbol stays neutral. Add
-`color_price = "change"` to tint the price by the move as well.
+That one prints the company's full name and an arrow instead of the symbol and
+a percentage — a layout the `show_*` flags cannot express.
 
 ### Fields
 
